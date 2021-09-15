@@ -123,6 +123,9 @@ export default async function createApp(): Promise<express.Application> {
 		}
 	});
 
+	const publicPath = require.resolve('altea-hi-fed/index.html');
+	const publicHtml = fse.readFileSync(publicPath, 'utf-8');
+
 	if (env.SERVE_APP) {
 		const adminPath = require.resolve('@directus/app/dist/index.html');
 		const adminUrl = new Url(env.PUBLIC_URL).addPath('admin');
@@ -138,6 +141,12 @@ export default async function createApp(): Promise<express.Application> {
 		app.use('/admin', express.static(path.join(adminPath, '..')));
 		app.use('/admin/*', (req, res) => {
 			res.send(html);
+		});
+
+		app.get('/app', (req, res) => res.send(publicHtml));
+		app.use('/app', express.static(path.join(publicPath, '..')));
+		app.use('/app/*', (req, res) => {
+			res.send(publicHtml);
 		});
 	}
 
@@ -187,6 +196,10 @@ export default async function createApp(): Promise<express.Application> {
 	app.use('/webhooks', webhooksRouter);
 
 	app.use(customRouter);
+
+	app.get('*', function (req, res) {
+		res.send(publicHtml);
+	});
 
 	// Register custom hooks / endpoints
 	await emitAsyncSafe('routes.custom.init.before', { app });

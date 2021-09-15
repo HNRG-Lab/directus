@@ -1,5 +1,5 @@
 {
-	"name": "directus",
+	"name": "h-directus",
 	"version": "9.0.0-rc.92",
 	"license": "GPL-3.0-only",
 	"homepage": "https://github.com/directus/directus#readme",
@@ -24,8 +24,11 @@
 	],
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/directus/directus.git"
+		"url": "git+https://github.com/HNRG-Lab/directus.git"
 	},
+  "publishConfig": {
+    "registry": "https://hpm.hnrg.it/repository/hifed-npm-hosted/"
+  },
 	"bugs": {
 		"url": "https://github.com/directus/directus/issues"
 	},
