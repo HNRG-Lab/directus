@@ -24,6 +24,8 @@ program
 	.option('-o, --output <file>', 'overwrite the output file read from package manifest')
 	.option('-l, --language <language>', 'overwrite the language to use')
 	.option('-f, --force', 'ignore the package manifest')
+	.option('-w, --watch', 'watch and rebuild on changes')
+	.option('-m --sourceMaps', 'include source maps in output')
 	.action(build);
 
 program.parse(process.argv);

@@ -12,19 +12,21 @@
 			:source="directusSource"
 			:layers="directusLayers"
 			@featureclick="handleClick"
-			@featureselect="updateSelection"
+			@featureselect="handleSelect"
 			@moveend="cameraOptionsWritable = $event"
-			@fitdata="removeLocationFilter"
+			@fitdata="fitDataBounds"
+			@updateitempopup="updateItemPopup"
 		/>
 
-		<v-button
-			v-if="!autoLocationFilter && locationFilterOutdated"
-			small
-			class="location-filter"
-			@click="updateLocationFilter"
-		>
-			{{ t('layouts.map.search_this_area') }}
-		</v-button>
+		<transition name="fade">
+			<div
+				v-if="itemPopup.item"
+				class="popup"
+				:style="{ top: itemPopup.position.y + 'px', left: itemPopup.position.x + 'px' }"
+			>
+				<render-template :template="template" :item="itemPopup.item" :collection="collection" />
+			</div>
+		</transition>
 
 		<transition name="fade">
 			<v-info v-if="error" type="danger" :title="t('unexpected_error')" icon="error" center>
@@ -46,17 +48,12 @@
 				{{ geojsonError }}
 			</v-info>
 			<v-progress-circular v-else-if="loading || geojsonLoading" indeterminate x-large class="center" />
-			<slot
-				v-else-if="itemCount === 0 && (searchQuery || activeFilterCount > 0 || !locationFilterOutdated)"
-				name="no-results"
-			/>
 		</transition>
 
 		<template v-if="loading || itemCount > 0">
 			<div class="footer">
-				<div class="pagination">
+				<div v-if="totalPages > 1" class="pagination">
 					<v-pagination
-						v-if="totalPages > 1"
 						:length="totalPages"
 						:total-visible="7"
 						show-first-last
@@ -100,20 +97,20 @@ import { useI18n } from 'vue-i18n';
 import { defineComponent, PropType } from 'vue';
 
 import MapComponent from './components/map.vue';
-import useSync from '@/composables/use-sync';
+import { useSync } from '@directus/shared/composables';
 import { GeometryOptions, Item } from '@directus/shared/types';
 
 export default defineComponent({
 	components: { MapComponent },
 	inheritAttrs: false,
 	props: {
+		collection: {
+			type: String,
+			required: true,
+		},
 		selection: {
 			type: Array as PropType<Item[]>,
 			default: () => [],
-		},
-		searchQuery: {
-			type: String as PropType<string | null>,
-			default: null,
 		},
 		loading: {
 			type: Boolean,
@@ -152,11 +149,11 @@ export default defineComponent({
 			required: true,
 		},
 		handleClick: {
-			type: Function as PropType<(key: number | string) => void>,
+			type: Function as PropType<(event: { id: string | number; replace: boolean }) => void>,
 			required: true,
 		},
-		updateSelection: {
-			type: Function as PropType<(selected: Array<string | number> | null) => void>,
+		handleSelect: {
+			type: Function as PropType<(event: { ids: Array<string | number>; replace: boolean }) => void>,
 			required: true,
 		},
 		cameraOptions: {
@@ -174,10 +171,6 @@ export default defineComponent({
 		itemCount: {
 			type: Number,
 			default: null,
-		},
-		activeFilterCount: {
-			type: Number,
-			required: true,
 		},
 		totalPages: {
 			type: Number,
@@ -199,16 +192,20 @@ export default defineComponent({
 			type: Boolean,
 			default: undefined,
 		},
-		locationFilterOutdated: {
-			type: Boolean,
-			required: true,
-		},
-		updateLocationFilter: {
+		fitDataBounds: {
 			type: Function as PropType<() => void>,
 			required: true,
 		},
-		removeLocationFilter: {
-			type: Function as PropType<() => void>,
+		template: {
+			type: String,
+			default: () => undefined,
+		},
+		itemPopup: {
+			type: Object as PropType<{ item?: any; position?: { x: number; y: number } }>,
+			default: () => undefined,
+		},
+		updateItemPopup: {
+			type: Function,
 			required: true,
 		},
 	},
@@ -224,7 +221,72 @@ export default defineComponent({
 });
 </script>
 
-<style lang="scss">
+<style lang="scss" scoped>
+.v-info {
+	padding: 40px;
+	background-color: var(--background-page);
+	border-radius: var(--border-radius);
+	box-shadow: var(--card-shadow);
+	pointer-events: none;
+}
+
+.v-info :deep(.v-button) {
+	pointer-events: initial;
+}
+
+.layout-map .mapboxgl-map :deep(.mapboxgl-canvas-container) {
+	transition: opacity 0.2s;
+}
+
+.layout-map .mapboxgl-map.loading :deep(.mapboxgl-canvas-container) {
+	opacity: 0.9;
+}
+
+.layout-map .mapboxgl-map.error :deep(.mapboxgl-canvas-container) {
+	opacity: 0.4;
+}
+
+.layout-map {
+	position: relative;
+	width: 100%;
+	height: calc(100% - 60px);
+}
+
+.center {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+}
+
+.location-filter {
+	position: absolute;
+	top: 10px;
+	left: 50%;
+	box-shadow: var(--card-shadow);
+	transform: translate(-50%, 0%);
+}
+
+.popup {
+	position: fixed;
+	z-index: 1;
+	max-width: 80%;
+	padding: 6px 10px;
+	color: var(--foreground-normal-alt);
+	font-weight: 500;
+	font-size: 14px;
+	font-family: var(--family-sans-serif);
+	background-color: var(--background-page);
+	border-radius: var(--border-radius);
+	box-shadow: var(--card-shadow);
+	transform: translate(-50%, -140%);
+	pointer-events: none;
+}
+
+.render-template {
+	padding-right: 0;
+}
+
 .mapboxgl-ctrl-dropdown {
 	display: flex;
 	align-items: center;
@@ -232,9 +294,10 @@ export default defineComponent({
 	height: 36px;
 	padding: 10px;
 	color: var(--foreground-subdued);
-	background-color: var(--background-subdued);
-	border: var(--border-width) solid var(--background-subdued);
+	background-color: var(--background-page);
+	border: var(--border-width) solid var(--background-page);
 	border-radius: var(--border-radius);
+	box-shadow: 0 0 3px 1px rgba(0, 0, 0, 0.1);
 
 	span {
 		width: auto;
@@ -244,43 +307,6 @@ export default defineComponent({
 	.v-select {
 		color: var(--foreground-normal);
 	}
-}
-</style>
-
-<style lang="scss">
-.layout-map .mapboxgl-map .mapboxgl-canvas-container {
-	transition: opacity 0.2s;
-}
-
-.layout-map .mapboxgl-map.loading .mapboxgl-canvas-container {
-	opacity: 0.9;
-}
-
-.layout-map .mapboxgl-map.error .mapboxgl-canvas-container {
-	opacity: 0.4;
-}
-</style>
-
-<style lang="scss" scoped>
-.layout-map {
-	position: relative;
-	width: 100%;
-	height: calc(100% - 65px);
-}
-
-.center {
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	-webkit-transform: translate(-50%, -50%);
-	transform: translate(-50%, -50%);
-}
-
-.location-filter {
-	position: absolute;
-	top: 10px;
-	left: 50%;
-	transform: translate(-50%, 0%);
 }
 
 .v-progress-circular {
@@ -292,39 +318,15 @@ export default defineComponent({
 	margin-top: 24px;
 }
 
-.delete-action {
-	--v-button-background-color: var(--danger-10);
-	--v-button-color: var(--danger);
-	--v-button-background-color-hover: var(--danger-25);
-	--v-button-color-hover: var(--danger);
-}
-
-.custom-layers {
-	padding: var(--content-padding);
-	padding-top: 0;
-}
-
-.v-info {
-	padding: 40px;
-	background-color: var(--background-page);
-	border-radius: var(--border-radius);
-	box-shadow: var(--card-shadow);
-	pointer-events: none;
-}
-
-.v-info > :deep(.v-button) {
-	pointer-events: initial;
-}
-
 .footer {
 	position: absolute;
-	right: 10px;
-	bottom: 10px;
-	left: 10px;
+	right: 0;
+	bottom: 0;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	box-sizing: border-box;
+	padding: 10px;
 	overflow: hidden;
 	background-color: transparent !important;
 
@@ -332,9 +334,25 @@ export default defineComponent({
 		--v-button-height: 28px;
 
 		display: inline-block;
+		margin-right: 10px;
+	}
+}
 
+.fade-enter-active,
+.fade-leave-active {
+	transition: opacity var(--medium) var(--transition);
+}
+
+.fade-enter-from,
+.fade-leave-to {
+	opacity: 0;
+}
+</style>
+<style lang="scss">
+.footer {
+	.pagination {
 		button {
-			box-shadow: 0 0 2px 1px rgba(0, 0, 0, 0.2);
+			box-shadow: 0 0 3px 1px rgba(0, 0, 0, 0.1);
 		}
 	}
 }

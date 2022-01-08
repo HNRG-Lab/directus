@@ -2,7 +2,14 @@ import path from 'path';
 import chalk from 'chalk';
 import fse from 'fs-extra';
 import ora from 'ora';
-import { OutputOptions as RollupOutputOptions, rollup, RollupOptions, Plugin } from 'rollup';
+import {
+	RollupError,
+	RollupOptions,
+	OutputOptions as RollupOutputOptions,
+	Plugin,
+	rollup,
+	watch as rollupWatch,
+} from 'rollup';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import json from '@rollup/plugin-json';
@@ -19,7 +26,15 @@ import { getLanguageFromPath, isLanguage } from '../utils/languages';
 import { Language } from '../types';
 import loadConfig from '../utils/load-config';
 
-type BuildOptions = { type: string; input: string; output: string; language: string; force: boolean };
+type BuildOptions = {
+	type: string;
+	input: string;
+	output: string;
+	language: string;
+	force: boolean;
+	watch: boolean;
+	sourceMaps: boolean;
+};
 
 export default async function build(options: BuildOptions): Promise<void> {
 	const packagePath = path.resolve('package.json');
@@ -72,23 +87,56 @@ export default async function build(options: BuildOptions): Promise<void> {
 
 	const spinner = ora('Building Directus extension...').start();
 
-	const rollupOptions = getRollupOptions(type, language, input, config.plugins);
-	const rollupOutputOptions = getRollupOutputOptions(type, output);
+	const rollupOptions = getRollupOptions(type, language, input, config.plugins, options);
+	const rollupOutputOptions = getRollupOutputOptions(type, output, options);
 
-	const bundle = await rollup(rollupOptions);
+	if (options.watch) {
+		const watcher = rollupWatch({
+			...rollupOptions,
+			output: rollupOutputOptions,
+		});
 
-	await bundle.write(rollupOutputOptions);
+		watcher.on('event', async (event) => {
+			switch (event.code) {
+				case 'ERROR': {
+					spinner.fail(chalk.bold('Failed'));
+					handleRollupError(event.error);
+					spinner.start(chalk.bold('Watching files for changes...'));
+					break;
+				}
+				case 'BUNDLE_END':
+					await event.result.close();
+					spinner.succeed(chalk.bold('Done'));
+					spinner.start(chalk.bold('Watching files for changes...'));
+					break;
+				case 'BUNDLE_START':
+					spinner.text = 'Building Directus extension...';
+					break;
+			}
+		});
+	} else {
+		try {
+			const bundle = await rollup(rollupOptions);
 
-	await bundle.close();
+			await bundle.write(rollupOutputOptions);
 
-	spinner.succeed(chalk.bold('Done'));
+			await bundle.close();
+
+			spinner.succeed(chalk.bold('Done'));
+		} catch (error) {
+			spinner.fail(chalk.bold('Failed'));
+			handleRollupError(error as RollupError);
+			process.exitCode = 1;
+		}
+	}
 }
 
 function getRollupOptions(
 	type: ExtensionType,
 	language: Language,
 	input: string,
-	plugins: Plugin[] = []
+	plugins: Plugin[] = [],
+	options: BuildOptions
 ): RollupOptions {
 	if (isAppExtension(type)) {
 		return {
@@ -108,7 +156,7 @@ function getRollupOptions(
 					},
 					preventAssignment: true,
 				}),
-				terser(),
+				options.sourceMaps ? null : terser(),
 			],
 		};
 	} else {
@@ -127,13 +175,13 @@ function getRollupOptions(
 					},
 					preventAssignment: true,
 				}),
-				terser(),
+				options.sourceMaps ? null : terser(),
 			],
 		};
 	}
 }
 
-function getRollupOutputOptions(type: ExtensionType, output: string): RollupOutputOptions {
+function getRollupOutputOptions(type: ExtensionType, output: string, options: BuildOptions): RollupOutputOptions {
 	if (isAppExtension(type)) {
 		return {
 			file: output,
@@ -144,6 +192,30 @@ function getRollupOutputOptions(type: ExtensionType, output: string): RollupOutp
 			file: output,
 			format: 'cjs',
 			exports: 'default',
+			sourcemap: options.sourceMaps,
 		};
+	}
+}
+
+function handleRollupError(error: RollupError): void {
+	const pluginPrefix = error.plugin ? `(plugin ${error.plugin}) ` : '';
+	log('\n' + chalk.red.bold(`${pluginPrefix}${error.name}: ${error.message}`));
+
+	if (error.url) {
+		log(chalk.cyan(error.url), 'error');
+	}
+
+	if (error.loc) {
+		log(`${(error.loc.file || error.id)!} (${error.loc.line}:${error.loc.column})`);
+	} else if (error.id) {
+		log(error.id);
+	}
+
+	if (error.frame) {
+		log(chalk.dim(error.frame));
+	}
+
+	if (error.stack) {
+		log(chalk.dim(error.stack));
 	}
 }

@@ -3,7 +3,19 @@ export {
 	defineDisplay,
 	defineLayout,
 	defineModule,
+	definePanel,
 	defineHook,
 	defineEndpoint,
+	getFieldsFromTemplate,
+	getRelationType,
 } from '@directus/shared/utils';
-export { useStores, useApi } from '@directus/shared/composables';
+export {
+	useStores,
+	useApi,
+	useExtensions,
+	useSync,
+	useCollection,
+	useItems,
+	useLayout,
+	useFilterFields,
+} from '@directus/shared/composables';

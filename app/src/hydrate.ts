@@ -6,6 +6,7 @@ import {
 	useCollectionsStore,
 	useFieldsStore,
 	useLatencyStore,
+	useInsightsStore,
 	usePermissionsStore,
 	usePresetsStore,
 	useRelationsStore,
@@ -13,6 +14,7 @@ import {
 	useServerStore,
 	useSettingsStore,
 	useUserStore,
+	useNotificationsStore,
 } from '@/stores';
 
 type GenericStore = {
@@ -35,14 +37,19 @@ export function useStores(
 		useLatencyStore,
 		useRelationsStore,
 		usePermissionsStore,
+		useInsightsStore,
+		useNotificationsStore,
 	]
 ): GenericStore[] {
 	return stores.map((useStore) => useStore()) as GenericStore[];
 }
 
-export async function hydrate(stores = useStores()): Promise<void> {
+export async function hydrate(): Promise<void> {
+	const stores = useStores();
+
 	const appStore = useAppStore();
 	const userStore = useUserStore();
+	const permissionsStore = usePermissionsStore();
 
 	if (appStore.hydrated) return;
 	if (appStore.hydrating) return;
@@ -59,7 +66,10 @@ export async function hydrate(stores = useStores()): Promise<void> {
 		await userStore.hydrate();
 
 		if (userStore.currentUser?.role) {
-			await Promise.all(stores.filter(({ $id }) => $id !== 'userStore').map((store) => store.hydrate?.()));
+			await permissionsStore.hydrate();
+			const hydratedStores = ['userStore', 'permissionsStore'];
+
+			await Promise.all(stores.filter(({ $id }) => !hydratedStores.includes($id)).map((store) => store.hydrate?.()));
 			await registerModules();
 
 			await setLanguage(userStore.currentUser?.language ?? 'en-US');
