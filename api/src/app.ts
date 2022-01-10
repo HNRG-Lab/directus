@@ -99,7 +99,7 @@ export default async function createApp(): Promise<express.Application> {
 					useDefaults: true,
 					directives: {
 						// Unsafe-eval is required for vue3 / vue-i18n / app extensions
-						scriptSrc: ["'self'", "'unsafe-eval'"],
+						scriptSrc: ["'self'", "'unsafe-eval'", "'unsafe-inline'"],
 
 						// Even though this is recommended to have enabled, it breaks most local
 						// installations. Making this opt-in rather than opt-out is a little more
@@ -160,7 +160,7 @@ export default async function createApp(): Promise<express.Application> {
 	});
 
 	const publicPath = require.resolve('altea-hi-fed/index.html');
-	const publicHtml = fse.readFileSync(publicPath, 'utf-8');
+	const publicHtml = await fse.readFile(publicPath, 'utf-8');
 
 	if (env.SERVE_APP) {
 		const adminPath = require.resolve('@directus/app');
