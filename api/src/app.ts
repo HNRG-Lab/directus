@@ -3,7 +3,6 @@ import express, { Request, Response, RequestHandler } from 'express';
 import fse from 'fs-extra';
 import path from 'path';
 import qs from 'qs';
-import helmet from 'helmet';
 
 import activityRouter from './controllers/activity';
 import assetsRouter from './controllers/assets';
@@ -54,8 +53,6 @@ import { register as registerWebhooks } from './webhooks';
 import { flushCaches } from './cache';
 import { registerAuthProviders } from './auth';
 import { Url } from './utils/url';
-import { getConfigFromEnv } from './utils/get-config-from-env';
-import { merge } from 'lodash';
 
 export default async function createApp(): Promise<express.Application> {
 	validateEnv(['KEY', 'SECRET']);
@@ -91,32 +88,6 @@ export default async function createApp(): Promise<express.Application> {
 	app.disable('x-powered-by');
 	app.set('trust proxy', env.IP_TRUST_PROXY);
 	app.set('query parser', (str: string) => qs.parse(str, { depth: 10 }));
-
-	app.use(
-		helmet.contentSecurityPolicy(
-			merge(
-				{
-					useDefaults: true,
-					directives: {
-						// Unsafe-eval is required for vue3 / vue-i18n / app extensions
-						scriptSrc: ["'self'", "'unsafe-eval'", "'unsafe-inline'"],
-
-						// Even though this is recommended to have enabled, it breaks most local
-						// installations. Making this opt-in rather than opt-out is a little more
-						// friendly. Ref #10806
-						upgradeInsecureRequests: null,
-
-						// These are required for MapLibre
-						workerSrc: ["'self'", 'blob:'],
-						childSrc: ["'self'", 'blob:'],
-						imgSrc: ["'self'", 'data:', 'blob:'],
-						connectSrc: ["'self'", 'https://*'],
-					},
-				},
-				getConfigFromEnv('CONTENT_SECURITY_POLICY_')
-			)
-		)
-	);
 
 	await emitter.emitInit('app.before', { app });
 
